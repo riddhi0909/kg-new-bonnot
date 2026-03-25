@@ -14,25 +14,39 @@ export default async function Home() {
   let error: string | null = null;
 
   try {
-    const client = getApolloClient();
-    const res = await client.query({
-      query: WOO_PRODUCTS_QUERY,
-      variables: { first: 12, after: null },
-    });
-    
-    if (res.errors?.length) {
-      throw new Error(res.errors.map((e) => e.message).join(" | "));
-    }
-
+    type GraphQLErrorLike = { message?: string };
+    type ApolloErrorLike = { message?: string; graphQLErrors?: GraphQLErrorLike[] };
     type ProductNode = {
       databaseId: number;
       slug?: string | null;
       name?: string | null;
       rawPrice?: string | null;
     };
+    type ApolloQueryResultLike = {
+      data?: { products?: { nodes?: ProductNode[] } };
+      errors?: GraphQLErrorLike[];
+      error?: ApolloErrorLike;
+    };
+
+    const client = getApolloClient();
+    const res = (await client.query({
+      query: WOO_PRODUCTS_QUERY,
+      variables: { first: 12, after: null },
+    })) as ApolloQueryResultLike;
+
+    // Apollo may surface GraphQL problems as `error` (ApolloError) and/or `errors`
+    // depending on errorPolicy and client version. Handle both safely.
+    const graphQLErrors =
+      (Array.isArray(res.errors) ? res.errors : undefined) ?? res.error?.graphQLErrors;
+    if (graphQLErrors?.length) {
+      throw new Error(graphQLErrors.map((e) => e.message).filter(Boolean).join(" | "));
+    }
+    if (res.error) {
+      throw new Error(res.error.message || "Apollo query error");
+    }
 
     products =
-      (res.data?.products?.nodes as ProductNode[] | undefined)?.map((p) => ({
+      res.data?.products?.nodes?.map((p) => ({
         id: p.databaseId,
         slug: p.slug ?? null,
         name: p.name ?? null,
