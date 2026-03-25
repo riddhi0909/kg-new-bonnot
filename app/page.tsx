@@ -1,64 +1,86 @@
-import Image from "next/image";
+import { getApolloClient, WOO_PRODUCTS_QUERY } from "../lib/apolloClient.js";
 
-export default function Home() {
+function displayPrice(rawPrice?: string | null) {
+  // rawPrice (format: RAW) is usually a numeric string without currency.
+  if (!rawPrice) return null;
+  const n = Number(rawPrice);
+  if (Number.isNaN(n)) return rawPrice;
+  const formatted = n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return formatted;
+}
+
+export default async function Home() {
+  let products: Array<{ id: number; slug?: string | null; name?: string | null; rawPrice?: string | null }> = [];
+  let error: string | null = null;
+
+  try {
+    const client = getApolloClient();
+    const res = await client.query({
+      query: WOO_PRODUCTS_QUERY,
+      variables: { first: 12, after: null },
+    });
+    
+    if (res.errors?.length) {
+      throw new Error(res.errors.map((e) => e.message).join(" | "));
+    }
+
+    type ProductNode = {
+      databaseId: number;
+      slug?: string | null;
+      name?: string | null;
+      rawPrice?: string | null;
+    };
+
+    products =
+      (res.data?.products?.nodes as ProductNode[] | undefined)?.map((p) => ({
+        id: p.databaseId,
+        slug: p.slug ?? null,
+        name: p.name ?? null,
+        rawPrice: p.rawPrice ?? null,
+      })) ?? [];
+  } catch (e) {
+    error = e instanceof Error ? e.message : "Unknown error";
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="flex flex-col min-h-screen bg-zinc-50 font-sans text-zinc-900">
+      <header className="px-6 py-8 border-b bg-white">
+        <h1 className="text-2xl font-semibold">WooCommerce Products (WPGraphQL demo)</h1>
+        <p className="text-sm text-zinc-600 mt-1">
+          Uses `WPGRAPHQL_ENDPOINT` (and optional `WPGRAPHQL_AUTH_TOKEN`) to query products via GraphQL.
+        </p>
+      </header>
+
+      <main className="px-6 py-8 w-full max-w-5xl mx-auto">
+        {error ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="font-semibold text-red-800">Could not load products</div>
+            <div className="text-red-700 text-sm mt-1 break-words">{error}</div>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="bg-white border rounded-lg p-4">No products found (or the query returned none).</div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {products.map((p) => {
+              const price = displayPrice(p.rawPrice);
+
+              return (
+                <div
+                  key={p.id}
+                  className="bg-white border rounded-lg p-4 hover:bg-zinc-50 transition-colors"
+                >
+                  <div className="font-semibold text-zinc-900">{p.name ?? `Product #${p.id}`}</div>
+                  <div className="text-sm text-zinc-500 mt-1">
+                    {p.slug ? `Slug: ${p.slug}` : `ID: ${p.id}`}
+                  </div>
+                  <div className="mt-3 text-lg font-semibold">
+                    {price ? price : "Price not available"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </main>
     </div>
   );
